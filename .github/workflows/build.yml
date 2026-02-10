@@ -1,0 +1,46 @@
+# Based on https://github.com/pterodactyl/wings/blob/3b968bbae1491e3922bb8b67912b30e462111cee/.github/workflows/push.yaml,
+# which is MIT licensed
+
+name: Build
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    permissions:
+      contents: read
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: 1.25.7
+      - name: go mod download
+        env:
+          CGO_ENABLED: 0
+        run: |
+          go mod download
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build .
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: onlyondemand_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: ./onlyondemand
