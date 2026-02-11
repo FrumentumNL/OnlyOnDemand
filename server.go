@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -30,10 +31,10 @@ type Stream struct {
 	RunningMutex sync.Mutex
 	Process      *os.Process
 	WorkDir      string
-	Viewers      atomic.Int32  // Only used for pipe
-	StdoutPipe   io.ReadCloser // Only used for pipe
-	MimeType     string        `toml:"mime-type"` // Only used for pipe
-	Playlist     string        // Only used for non-pipe
+	Viewers      atomic.Int32 // Only used for pipe
+	StreamPipe   *os.File     // Only used for pipe
+	MimeType     string       `toml:"mime-type"` // Only used for pipe
+	Playlist     string       // Only used for non-pipe
 	KillAt       int64
 	Timeout      int64
 }
@@ -171,7 +172,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", stream.MimeType)
 		// Pipe stdout to response
 		stream.Viewers.Add(1)
-		io.Copy(w, stream.StdoutPipe)
+		io.Copy(w, stream.StreamPipe)
 		stream.Viewers.Add(-1)
 		return
 	}
@@ -210,17 +211,25 @@ func startStream(stream *Stream) error {
 	cmd.Dir = stream.WorkDir
 
 	if stream.Type == TYPE_PIPE {
-		stdoutPipe, err := cmd.StdoutPipe()
+		fifoPath := stream.WorkDir + "/output.pipe"
+		err := syscall.Mkfifo(fifoPath, 0666)
 		if err != nil {
 			return err
 		}
-		stream.StdoutPipe = stdoutPipe
+		stream.StreamPipe, err = os.OpenFile(fifoPath, os.O_RDWR, os.ModeNamedPipe)
+		if err != nil {
+			return err
+		}
 	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	err := cmd.Start()
 	if err != nil {
 		return err
 	}
+	println("Got here")
 
 	go func() {
 		_ = cmd.Wait()
@@ -264,9 +273,9 @@ func stopStream0(stream *Stream) {
 		_ = stream.Process.Kill()
 		stream.Process = nil
 	}
-	if stream.StdoutPipe != nil {
-		_ = stream.StdoutPipe.Close()
-		stream.StdoutPipe = nil
+	if stream.StreamPipe != nil {
+		_ = stream.StreamPipe.Close()
+		stream.StreamPipe = nil
 	}
 	if stream.WorkDir != "" {
 		_ = os.RemoveAll(stream.WorkDir)

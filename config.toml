@@ -5,7 +5,7 @@ all-streams-playlist = true
 [streams.pipe]
 type = "pipe"
 mime-type = "video/mp2t"
-command = "ffmpeg -f lavfi -re -i sine=frequency=1000 -f lavfi -re -i testsrc=size=1920x1080:rate=25 -c:v libx264 -f mpegts -"
+command = "ffmpeg -f lavfi -re -i sine=frequency=1000 -f lavfi -re -i testsrc=size=1920x1080:rate=25 -c:v libx264 -f mpegts -y output.pipe"
 timeout = 15
 
 [streams.file]
@@ -17,7 +17,7 @@ playlist = "stream.m3u8"
 
 [[template]]
 name = "test-screen:{res}@{fps}"
-command = "ffmpeg -f lavfi -re -i sine=frequency=1000 -f lavfi -re -i testsrc2=size={res}:rate={fps} -c:v libx264 -f mpegts -"
+command = "ffmpeg -f lavfi -re -i sine=frequency=1000 -f lavfi -re -i testsrc2=size={res}:rate={fps} -c:v libx264 -f mpegts -y output.pipe"
 timeout = 15
 mime-type = "video/mp2t"
 type = "pipe"
