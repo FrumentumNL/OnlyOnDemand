@@ -15,6 +15,7 @@ experience when someone tunes in.
 - Automatically starts and stops the stream based on viewer activity.
 - Supports any stream source that can be started and stopped via command line (e.g. FFMPEG)
 - Supports custom timeouts for starting and stopping the stream.
+- Config templates! Write your stream command once and then reuse it for as many streams as you want!
 
 ## Use cases
 
