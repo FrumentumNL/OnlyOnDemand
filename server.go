@@ -20,6 +20,7 @@ const TYPE_FILE = "file"
 
 var workBaseDir = "./tmp"
 var streams = make(map[string]*Stream)
+var allStreamsPlaylistEnabled = false
 
 type Stream struct {
 	Name         string
@@ -50,6 +51,7 @@ func main() {
 	}
 	workBaseDir = config.WorkBaseDir
 	streams = config.Streams
+	allStreamsPlaylistEnabled = config.AllStreamsPlaylist
 
 	go garbageCollector()
 
@@ -108,6 +110,22 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	streamName := strings.Split(path[1:], "/")[0]
+	if streamName == "all.m3u8" && allStreamsPlaylistEnabled {
+		w.Header().Add("Content-Type", "audio/x-mpegurl")
+		var playlistBuilder strings.Builder
+		playlistBuilder.WriteString("#EXTM3U\n")
+		for name, stream := range streams {
+			playlistBuilder.WriteString("#EXTINF:-1 tvg-id=\"" + name + "\"," + name + "\n")
+
+			if stream.Type == TYPE_PIPE {
+				playlistBuilder.WriteString("/" + name + "\n")
+			} else if stream.Type == TYPE_FILE {
+				playlistBuilder.WriteString("/" + name + "/" + stream.Playlist + "\n")
+			}
+		}
+		w.Write([]byte(playlistBuilder.String()))
+		return
+	}
 
 	stream := streams[streamName]
 	if stream == nil {

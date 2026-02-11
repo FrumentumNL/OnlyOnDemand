@@ -14,9 +14,10 @@ import (
 var demoConfig []byte
 
 type Config struct {
-	WorkBaseDir string             `toml:"work-base-dir"`
-	ListenOn    string             `toml:"listen-on"`
-	Streams     map[string]*Stream `toml:"streams"`
+	WorkBaseDir        string             `toml:"work-base-dir"`
+	ListenOn           string             `toml:"listen-on"`
+	Streams            map[string]*Stream `toml:"streams"`
+	AllStreamsPlaylist bool               `toml:"all-streams-playlist"`
 }
 
 func LoadConfig(path string) (*Config, error) {

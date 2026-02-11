@@ -1,5 +1,6 @@
 work-base-dir = "./tmp"
 listen-on = ":8080"
+all-streams-playlist = true
 
 [streams.pipe]
 type = "pipe"
