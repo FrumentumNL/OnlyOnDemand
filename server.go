@@ -108,15 +108,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OnlyOnDemand Streaming Server"))
 		return
 	}
-
 	streamName := strings.Split(path[1:], "/")[0]
 	if streamName == "all.m3u8" && allStreamsPlaylistEnabled {
+		base := ""
+		if r.URL.Query().Get("absolute") == "true" {
+			base = "http://" + r.Host
+		}
 		w.Header().Add("Content-Type", "audio/x-mpegurl")
 		var playlistBuilder strings.Builder
 		playlistBuilder.WriteString("#EXTM3U\n")
 		for name, stream := range streams {
 			playlistBuilder.WriteString("#EXTINF:-1 tvg-id=\"" + name + "\"," + name + "\n")
-
+			playlistBuilder.WriteString(base)
 			if stream.Type == TYPE_PIPE {
 				playlistBuilder.WriteString("/" + name + "\n")
 			} else if stream.Type == TYPE_FILE {
