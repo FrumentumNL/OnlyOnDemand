@@ -208,6 +208,7 @@ func startStream(stream *Stream) error {
 	}
 
 	cmd := exec.Command("sh", "-c", stream.Command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Dir = stream.WorkDir
 
 	if stream.Type == TYPE_PIPE {
@@ -270,7 +271,8 @@ func stopStream(stream *Stream) {
 func stopStream0(stream *Stream) {
 	println("Stopping stream:", stream.Name)
 	if stream.Process != nil {
-		_ = stream.Process.Kill()
+		_ = syscall.Kill(-stream.Process.Pid, syscall.SIGTERM)
+		// todo maybe wait and then SIGKILL if not exited?
 		stream.Process = nil
 	}
 	if stream.StreamPipe != nil {
