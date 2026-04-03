@@ -230,7 +230,6 @@ func startStream(stream *Stream) error {
 	if err != nil {
 		return err
 	}
-	println("Got here")
 
 	go func() {
 		_ = cmd.Wait()
