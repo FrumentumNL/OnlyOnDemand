@@ -1,9 +1,9 @@
 package main
 
 import (
+	"container/list"
 	"crypto/rand"
 	"errors"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -31,10 +30,10 @@ type Stream struct {
 	RunningMutex sync.Mutex
 	Process      *os.Process
 	WorkDir      string
-	Viewers      atomic.Int32 // Only used for pipe
-	StreamPipe   *os.File     // Only used for pipe
-	MimeType     string       `toml:"mime-type"` // Only used for pipe
-	Playlist     string       // Only used for non-pipe
+	Viewers      list.List // Only used for pipe
+	StreamPipe   *os.File  // Only used for pipe
+	MimeType     string    `toml:"mime-type"` // Only used for pipe
+	Playlist     string    // Only used for non-pipe
 	KillAt       int64
 	Timeout      int64
 }
@@ -82,17 +81,6 @@ func garbageCollector() {
 		for _, stream := range streams {
 			if !stream.Running {
 				continue
-			}
-
-			// Pipe streams require regular viewer count checks
-			if stream.Type == TYPE_PIPE {
-				if stream.Viewers.Load() == 0 {
-					if stream.KillAt == 0 {
-						stream.KillAt = time.Now().Unix() + stream.Timeout
-					}
-				} else {
-					stream.KillAt = 0
-				}
 			}
 
 			if stream.KillAt != 0 && time.Now().Unix() > stream.KillAt {
@@ -170,10 +158,23 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	if stream.Type == TYPE_PIPE {
 		w.Header().Add("Content-Type", stream.MimeType)
-		// Pipe stdout to response
-		stream.Viewers.Add(1)
-		io.Copy(w, stream.StreamPipe)
-		stream.Viewers.Add(-1)
+		stream.Viewers.PushBack(w)
+		for {
+			if !stream.Running {
+				break
+			}
+			found := false
+			for e := stream.Viewers.Front(); e != nil; e = e.Next() {
+				if e.Value.(http.ResponseWriter) == w {
+					found = true
+					break
+				}
+			}
+			if !found {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		return
 	}
 
@@ -232,15 +233,36 @@ func startStream(stream *Stream) error {
 	}
 
 	go func() {
-		_ = cmd.Wait()
+		if stream.Type == TYPE_FILE {
+			_ = cmd.Wait()
+		} else {
+			buf := make([]byte, 188)
+			for {
+				n, err := stream.StreamPipe.Read(buf)
+				if err != nil {
+					break
+				}
+				// Send to all viewers, delete from writer if error
+				var next *list.Element
+				for e := stream.Viewers.Front(); e != nil; e = next {
+					next = e.Next()
+					writer := e.Value.(http.ResponseWriter)
+					_, err := writer.Write(buf[:n])
+					if err != nil {
+						stream.Viewers.Remove(e)
+					}
+					stream.KillAt = time.Now().Unix() + stream.Timeout
+				}
+			}
+		}
 		stopStream(stream)
 	}()
 
 	stream.Process = cmd.Process
 	stream.Running = true
+	stream.KillAt = time.Now().Unix() + stream.Timeout
 	if stream.Type == TYPE_FILE {
-		// Wait for Playlist to be created
-		stream.KillAt = time.Now().Unix() + stream.Timeout
+		// Wait for Playlist to be created so no 404 is hit
 		playlistPath := stream.WorkDir + "/" + stream.Playlist
 		for {
 			if _, err := os.Stat(playlistPath); err == nil {

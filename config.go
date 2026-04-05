@@ -142,7 +142,6 @@ func ValidateStream(stream *Stream, name string, placeholders *map[string]string
 	// todo is there a way to just prevent unmarshalling these fields?
 	stream.Name = ReplacePlaceholders(name, placeholders)
 	stream.Running = false
-	stream.Viewers.Store(0)
 	stream.RunningMutex = sync.Mutex{}
 
 	return true
