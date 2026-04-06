@@ -247,9 +247,14 @@ func startStream(stream *Stream) error {
 				for e := stream.Viewers.Front(); e != nil; e = next {
 					next = e.Next()
 					writer := e.Value.(http.ResponseWriter)
+					if writer == nil {
+						stream.Viewers.Remove(e)
+						continue
+					}
 					_, err := writer.Write(buf[:n])
 					if err != nil {
 						stream.Viewers.Remove(e)
+						continue
 					}
 					stream.KillAt = time.Now().Unix() + stream.Timeout
 				}
