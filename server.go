@@ -30,10 +30,11 @@ type Stream struct {
 	RunningMutex sync.Mutex
 	Process      *os.Process
 	WorkDir      string
-	Viewers      list.List // Only used for pipe
-	StreamPipe   *os.File  // Only used for pipe
-	MimeType     string    `toml:"mime-type"` // Only used for pipe
-	Playlist     string    // Only used for non-pipe
+	Viewers      list.List  // Only used for pipe
+	ViewersMutex sync.Mutex // Protects Viewers list
+	StreamPipe   *os.File   // Only used for pipe
+	MimeType     string     `toml:"mime-type"` // Only used for pipe
+	Playlist     string     // Only used for non-pipe
 	KillAt       int64
 	Timeout      int64
 }
@@ -158,18 +159,22 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	if stream.Type == TYPE_PIPE {
 		w.Header().Add("Content-Type", stream.MimeType)
+		stream.ViewersMutex.Lock()
 		stream.Viewers.PushBack(w)
+		stream.ViewersMutex.Unlock()
 		for {
 			if !stream.Running {
 				break
 			}
 			found := false
+			stream.ViewersMutex.Lock()
 			for e := stream.Viewers.Front(); e != nil; e = e.Next() {
 				if e.Value.(http.ResponseWriter) == w {
 					found = true
 					break
 				}
 			}
+			stream.ViewersMutex.Unlock()
 			if !found {
 				break
 			}
@@ -243,6 +248,7 @@ func startStream(stream *Stream) error {
 					break
 				}
 				// Send to all viewers, delete from writer if error
+				stream.ViewersMutex.Lock()
 				var next *list.Element
 				for e := stream.Viewers.Front(); e != nil; e = next {
 					next = e.Next()
@@ -251,13 +257,23 @@ func startStream(stream *Stream) error {
 						stream.Viewers.Remove(e)
 						continue
 					}
-					_, err := writer.Write(buf[:n])
-					if err != nil {
-						stream.Viewers.Remove(e)
-						continue
-					}
-					stream.KillAt = time.Now().Unix() + stream.Timeout
+					// Attempt to write with panic recovery per-viewer
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Println("Recovered from write panic for viewer, removing:", r)
+								stream.Viewers.Remove(e)
+							}
+						}()
+						_, err := writer.Write(buf[:n])
+						if err != nil {
+							stream.Viewers.Remove(e)
+							return
+						}
+						stream.KillAt = time.Now().Unix() + stream.Timeout
+					}()
 				}
+				stream.ViewersMutex.Unlock()
 			}
 		}
 		stopStream(stream)
